@@ -43,11 +43,20 @@ else()
 endif()
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_CURRENT_SOURCE_DIR}")
 
-OPTION(USE_TBB 	"Set to ON to use tbb” OFF)
-OPTION(USE_OMP 	"Set to ON to use omp” OFF)
-OPTION(USE_AF 	"Set to ON to use array fire” OFF)
+OPTION(USE_TBB 	"Set to ON to use tbb" OFF)
+OPTION(USE_OMP 	"Set to ON to use omp" OFF)
+OPTION(USE_AF 	"Set to ON to use array fire" OFF)
 OPTION(USE_SSE 	"Set to ON to use sse" ON)
 OPTION(USE_AVX 	"Set to ON to use avx" ON)
+
+# ----------------------------------------------------------------------------
+#   Default variables
+# ----------------------------------------------------------------------------
+
+ SET(ROOT_DIR  ${PROJECT_SOURCE_DIR}/tiny_cnn  )  ##default for all, can be changed if AF is detected
+ SET( TINY_CNN_HRDS tiny_cnn/activation_function.h    tiny_cnn/cifar10_parser.h  tiny_cnn/convolutional_layer.h  tiny_cnn/display.h  tiny_cnn/fully_connected_dropout_layer.h  tiny_cnn/image.h        tiny_cnn/layer.h   tiny_cnn/loss_function.h      tiny_cnn/mnist_parser.h  tiny_cnn/optimizer.h                tiny_cnn/product.h   tiny_cnn/util.h
+tiny_cnn/average_pooling_layer.h  tiny_cnn/config.h          tiny_cnn/deform.h               tiny_cnn/dropout.h  tiny_cnn/fully_connected_layer.h          tiny_cnn/input_layer.h  tiny_cnn/layers.h  tiny_cnn/max_pooling_layer.h  tiny_cnn/network.h       tiny_cnn/partial_connected_layer.h  tiny_cnn/tiny_cnn.h  tiny_cnn/weight_init.h)
+
 
 # ----------------------------------------------------------------------------
 #   Find Dependencies
@@ -74,15 +83,13 @@ ELSEIF(USE_AF)
     # For most uses only FIND_PACKAGE(ArrayFire REQUIRED), ADD_EXECUTABLE(...)
     # and TARGET_LINK_LIBRARIES(... ${ARRAYFIRE_LIBRARIES}) are needed
     MACRO(BUILD_EXAMPLE EXAMPLE_NAME EXAMPLE_SOURCE BACKEND_NAME BACKEND_LIBRARIES OTHER_LIBRARIES OUT_DIR_NAME)
-        ADD_EXECUTABLE(example_${EXAMPLE_NAME}_${BACKEND_NAME} ${EXAMPLE_SOURCE} "../../../src/BinaryCvMat.cpp" "../../../src/TestCNN.cpp" )
-        include_directories(${OPENCV_INCLUDE_DIR} "../../../src/")
-        TARGET_LINK_LIBRARIES(example_${EXAMPLE_NAME}_${BACKEND_NAME}
-            ${BACKEND_LIBRARIES} ${OTHER_LIBRARIES} ${OpenCV_LIBRARIES} )
-        SET_TARGET_PROPERTIES(example_${EXAMPLE_NAME}_${BACKEND_NAME}
-            PROPERTIES
-            OUTPUT_NAME ${EXAMPLE_NAME}_${BACKEND_NAME}
-            RUNTIME_OUTPUT_DIRECTORY ${OUT_DIR_NAME}
-            FOLDER "Examples/${BACKEND_NAME}")
+        ADD_EXECUTABLE(example_${EXAMPLE_NAME}_${BACKEND_NAME} ${EXAMPLE_SOURCE} )
+        TARGET_LINK_LIBRARIES(example_${EXAMPLE_NAME}_${BACKEND_NAME} ${BACKEND_LIBRARIES} ${OTHER_LIBRARIES})
+        # SET_TARGET_PROPERTIES(example_${EXAMPLE_NAME}_${BACKEND_NAME}
+        #     PROPERTIES
+        #     OUTPUT_NAME ${EXAMPLE_NAME}_${BACKEND_NAME}
+        #     RUNTIME_OUTPUT_DIRECTORY ${OUT_DIR_NAME}
+        #     FOLDER "Examples/${BACKEND_NAME}")
     ENDMACRO()
 
     # A macro to build a list of files
@@ -107,12 +114,25 @@ ELSEIF(USE_AF)
     FIND_PACKAGE(OpenCL QUIET)
     FIND_PACKAGE(ArrayFire REQUIRED)
 
+    ###change global for arrayfire
+    #the root
+    SET(ROOT_DIR  ${PROJECT_SOURCE_DIR}/af_tiny_cnn  )
+    #each filename is updated with af prefix
+    FOREACH(FILE ${TINY_CNN_HRDS})
+            SET( TINY_CNN_HRDS_2 af_${FILE})
+    ENDFOREACH()
+    SET( TINY_CNN_HRDS_2 TINY_CNN_HRDS)
+    unset(TINY_CNN_HRDS_2)
+
+
     INCLUDE_DIRECTORIES(${ArrayFire_INCLUDE_DIRS})
     if(${ArrayFire_CPU_FOUND})  # variable defined by FIND(ArrayFire ...)
         MESSAGE(STATUS "EXAMPLES: CPU backend is ON.")
+        SET(REQUIRED_LIBRARIES  ${REQUIRED_LIBRARIES} ${ArrayFire_CPU_LIBRARIES} )
         #BUILD_ALL("${FILES}" cpu ${ArrayFire_CPU_LIBRARIES} "")
     elseif(TARGET afcpu)        # variable defined by the ArrayFire build tree
         MESSAGE(STATUS "EXAMPLES: CPU backend is ON.")
+        SET(REQUIRED_LIBRARIES  ${REQUIRED_LIBRARIES} afcpu )
         #BUILD_ALL("${FILES}" cpu afcpu "")
     else()
         MESSAGE(STATUS "EXAMPLES: CPU backend is OFF. afcpu was not found.")
@@ -128,9 +148,11 @@ ELSEIF(USE_AF)
               )
             MESSAGE(STATUS "EXAMPLES: CUDA backend is ON.")
             #BUILD_ALL("${FILES}" cuda ${ArrayFire_CUDA_LIBRARIES} "${CUDA_CUBLAS_LIBRARIES};${CUDA_LIBRARIES};${CUDA_cusolver_LIBRARY};${CUDA_CUFFT_LIBRARIES};${CUDA_NVVM_LIBRARY};${CUDA_CUDA_LIBRARY}")
+            SET(REQUIRED_LIBRARIES  ${REQUIRED_LIBRARIES} ${ArrayFire_CUDA_LIBRARIES} "${CUDA_CUBLAS_LIBRARIES};${CUDA_LIBRARIES};${CUDA_cusolver_LIBRARY};${CUDA_CUFFT_LIBRARIES};${CUDA_NVVM_LIBRARY};${CUDA_CUDA_LIBRARY}" )
         elseif(TARGET afcuda)        # variable defined by the ArrayFire build tree
             MESSAGE(STATUS "EXAMPLES: CUDA backend is ON.")
             #BUILD_ALL("${FILES}" cuda afcuda "")
+            SET(REQUIRED_LIBRARIES  ${REQUIRED_LIBRARIES} afcuda )
         else()
             MESSAGE(STATUS "EXAMPLES: CUDA backend is OFF. afcuda was not found")
         endif()
@@ -142,9 +164,11 @@ ELSEIF(USE_AF)
         if(${ArrayFire_OpenCL_FOUND})  # variable defined by FIND(ArrayFire ...)
             MESSAGE(STATUS "EXAMPLES: OPENCL backend is ON.")
             #BUILD_ALL("${FILES}" opencl ${ArrayFire_OpenCL_LIBRARIES} "${OpenCL_LIBRARIES}")
+            SET(REQUIRED_LIBRARIES  ${REQUIRED_LIBRARIES} ${ArrayFire_OpenCL_LIBRARIES} "${OpenCL_LIBRARIES}" )
         elseif(TARGET afopencl)        # variable defined by the ArrayFire build tree
             MESSAGE(STATUS "EXAMPLES: OPENCL backend is ON.")
             #BUILD_ALL("${FILES}" opencl afopencl ${OpenCL_LIBRARIES})
+            SET(REQUIRED_LIBRARIES  ${REQUIRED_LIBRARIES} afopencl ${OpenCL_LIBRARIES} )
         else()
             MESSAGE(STATUS "EXAMPLES: OPENCL backend is OFF. afopencl was not found")
         endif()
@@ -185,7 +209,6 @@ ELSE()#MSVC
 
 ENDIF()
 
- 
 
     SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${EXTRA_C_FLAGS}")
     SET(CMAKE_CXX_FLAGS_RELEASE "${EXTRA_C_FLAGS_RELEASE}")
@@ -198,14 +221,13 @@ ENDIF()
 #------------------------------------------------
 # TARGETS
 #------------------------------------------------
-INCLUDE_DIRECTORIES(${PROJECT_SOURCE_DIR}/tiny_cnn )
+
 LINK_LIBRARIES(${REQUIRED_LIBRARIES} )
 
-SET( tiny_cnn_hrds tiny_cnn/activation_function.h    tiny_cnn/cifar10_parser.h  tiny_cnn/convolutional_layer.h  tiny_cnn/display.h  tiny_cnn/fully_connected_dropout_layer.h  tiny_cnn/image.h        tiny_cnn/layer.h   tiny_cnn/loss_function.h      tiny_cnn/mnist_parser.h  tiny_cnn/optimizer.h                tiny_cnn/product.h   tiny_cnn/util.h
-tiny_cnn/average_pooling_layer.h  tiny_cnn/config.h          tiny_cnn/deform.h               tiny_cnn/dropout.h  tiny_cnn/fully_connected_layer.h          tiny_cnn/input_layer.h  tiny_cnn/layers.h  tiny_cnn/max_pooling_layer.h  tiny_cnn/network.h       tiny_cnn/partial_connected_layer.h  tiny_cnn/tiny_cnn.h  tiny_cnn/weight_init.h)
+INCLUDE_DIRECTORIES(${ROOT_DIR} )
 
-ADD_EXECUTABLE(train example/train.cpp ${tiny_cnn_hrds})
-ADD_EXECUTABLE(test example/test.cpp  ${tiny_cnn_hrds})
+ADD_EXECUTABLE(train example/train.cpp ${TINY_CNN_HRDS})
+ADD_EXECUTABLE(test example/test.cpp  ${TINY_CNN_HRDS})
 
 
 
