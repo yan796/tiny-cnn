@@ -1,6 +1,7 @@
 #Command line options
 #-DUSE_TBB=ON/OFF  (default off)
 #-DUSE_OMP=ON/OFF  (default off)
+#-DUSE_AF=ON/OFF  (default off)
 #-DUSE_SSE=ON/OFF  (default on)
 #-DUSE_AVX=ON/OFF  (default on)
 
@@ -42,25 +43,15 @@ else()
 endif()
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_CURRENT_SOURCE_DIR}")
 
-OPTION(USE_TBB 	"Set to ON to use boost" OFF)
-OPTION(USE_OMP 	"Set to ON to use boost" OFF)
+OPTION(USE_TBB 	"Set to ON to use tbb” OFF)
+OPTION(USE_OMP 	"Set to ON to use omp” OFF)
+OPTION(USE_AF 	"Set to ON to use array fire” OFF)
 OPTION(USE_SSE 	"Set to ON to use sse" ON)
 OPTION(USE_AVX 	"Set to ON to use avx" ON)
 
 # ----------------------------------------------------------------------------
 #   Find Dependencies
 # ----------------------------------------------------------------------------
-
-######BOOST (NOT REQUIRED)
-#set(Boost_USE_STATIC_LIBS        OFF)
-#find_package( Boost   COMPONENTS   timer   ) #thread iostreams
-#if(Boost_FOUND)
-#	include_directories(${Boost_INCLUDE_DIRS})
-#	link_directories(${Boost_LIBRARY_DIRS})
-#	SET(CMAKE_LIBRARY_PATH ${CMAKE_LIBRARY_PATH} ${Boost_LIBRARY_DIRS})
-#        SET(REQUIRED_LIBRARIES  ${REQUIRED_} ${Boost_TIMER_LIBRARY}  )
-#ENDIF()
-
 
 IF(USE_TBB)
     find_package(TBB REQUIRED)
@@ -73,6 +64,94 @@ find_package(OpenMP  REQUIRED)
         set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${OpenMP_C_FLAGS}")
         set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
         add_definitions( -DCNN_USE_OMP)
+ELSEIF(USE_AF)
+
+
+    ###macro needed for ArrayFire
+
+
+    # A macro to build an ArrayFire example
+    # For most uses only FIND_PACKAGE(ArrayFire REQUIRED), ADD_EXECUTABLE(...)
+    # and TARGET_LINK_LIBRARIES(... ${ARRAYFIRE_LIBRARIES}) are needed
+    MACRO(BUILD_EXAMPLE EXAMPLE_NAME EXAMPLE_SOURCE BACKEND_NAME BACKEND_LIBRARIES OTHER_LIBRARIES OUT_DIR_NAME)
+        ADD_EXECUTABLE(example_${EXAMPLE_NAME}_${BACKEND_NAME} ${EXAMPLE_SOURCE} "../../../src/BinaryCvMat.cpp" "../../../src/TestCNN.cpp" )
+        include_directories(${OPENCV_INCLUDE_DIR} "../../../src/")
+        TARGET_LINK_LIBRARIES(example_${EXAMPLE_NAME}_${BACKEND_NAME}
+            ${BACKEND_LIBRARIES} ${OTHER_LIBRARIES} ${OpenCV_LIBRARIES} )
+        SET_TARGET_PROPERTIES(example_${EXAMPLE_NAME}_${BACKEND_NAME}
+            PROPERTIES
+            OUTPUT_NAME ${EXAMPLE_NAME}_${BACKEND_NAME}
+            RUNTIME_OUTPUT_DIRECTORY ${OUT_DIR_NAME}
+            FOLDER "Examples/${BACKEND_NAME}")
+    ENDMACRO()
+
+    # A macro to build a list of files
+    # For most uses only FIND_PACKAGE(ArrayFire REQUIRED), ADD_EXECUTABLE(...)
+    # and TARGET_LINK_LIBRARIES(... ${ARRAYFIRE_LIBRARIES}) are needed
+    MACRO(BUILD_ALL FILES BACKEND_NAME BACKEND_LIBRARIES OTHER_LIBRARIES)
+
+        FOREACH(FILE ${FILES})
+            GET_FILENAME_COMPONENT(EXAMPLE ${FILE} NAME_WE)
+            GET_FILENAME_COMPONENT(FULL_DIR_NAME ${FILE} PATH)
+            GET_FILENAME_COMPONENT(DIR_NAME ${FULL_DIR_NAME} NAME)
+
+            BUILD_EXAMPLE(${EXAMPLE} ${FILE} ${BACKEND_NAME} "${BACKEND_LIBRARIES}" "${OTHER_LIBRARIES}" ${DIR_NAME})
+        ENDFOREACH()
+    ENDMACRO()
+
+
+
+
+
+	FIND_PACKAGE(CUDA QUIET)
+    FIND_PACKAGE(OpenCL QUIET)
+    FIND_PACKAGE(ArrayFire REQUIRED)
+
+    INCLUDE_DIRECTORIES(${ArrayFire_INCLUDE_DIRS})
+    if(${ArrayFire_CPU_FOUND})  # variable defined by FIND(ArrayFire ...)
+        MESSAGE(STATUS "EXAMPLES: CPU backend is ON.")
+        #BUILD_ALL("${FILES}" cpu ${ArrayFire_CPU_LIBRARIES} "")
+    elseif(TARGET afcpu)        # variable defined by the ArrayFire build tree
+        MESSAGE(STATUS "EXAMPLES: CPU backend is ON.")
+        #BUILD_ALL("${FILES}" cpu afcpu "")
+    else()
+        MESSAGE(STATUS "EXAMPLES: CPU backend is OFF. afcpu was not found.")
+    endif()
+
+    if (${CUDA_FOUND})
+        if(${ArrayFire_CUDA_FOUND})  # variable defined by FIND(ArrayFire ...)
+            FIND_LIBRARY( CUDA_NVVM_LIBRARY
+              NAMES "nvvm"
+              PATH_SUFFIXES "nvvm/lib64" "nvvm/lib"
+              PATHS ${CUDA_TOOLKIT_ROOT_DIR}
+              DOC "CUDA NVVM Library"
+              )
+            MESSAGE(STATUS "EXAMPLES: CUDA backend is ON.")
+            #BUILD_ALL("${FILES}" cuda ${ArrayFire_CUDA_LIBRARIES} "${CUDA_CUBLAS_LIBRARIES};${CUDA_LIBRARIES};${CUDA_cusolver_LIBRARY};${CUDA_CUFFT_LIBRARIES};${CUDA_NVVM_LIBRARY};${CUDA_CUDA_LIBRARY}")
+        elseif(TARGET afcuda)        # variable defined by the ArrayFire build tree
+            MESSAGE(STATUS "EXAMPLES: CUDA backend is ON.")
+            #BUILD_ALL("${FILES}" cuda afcuda "")
+        else()
+            MESSAGE(STATUS "EXAMPLES: CUDA backend is OFF. afcuda was not found")
+        endif()
+    else()
+        MESSAGE(STATUS "EXAMPLES: CUDA backend is OFF. CUDA was not found")
+    endif()
+
+    if (${OpenCL_FOUND})
+        if(${ArrayFire_OpenCL_FOUND})  # variable defined by FIND(ArrayFire ...)
+            MESSAGE(STATUS "EXAMPLES: OPENCL backend is ON.")
+            #BUILD_ALL("${FILES}" opencl ${ArrayFire_OpenCL_LIBRARIES} "${OpenCL_LIBRARIES}")
+        elseif(TARGET afopencl)        # variable defined by the ArrayFire build tree
+            MESSAGE(STATUS "EXAMPLES: OPENCL backend is ON.")
+            #BUILD_ALL("${FILES}" opencl afopencl ${OpenCL_LIBRARIES})
+        else()
+            MESSAGE(STATUS "EXAMPLES: OPENCL backend is OFF. afopencl was not found")
+        endif()
+    else()
+        MESSAGE(STATUS "EXAMPLES: OPENCL backend is OFF. OPENCL was not found")
+    endif()
+
 ENDIF()
 # ----------------------------------------------------------------------------
 # COMPILER OPTIONS

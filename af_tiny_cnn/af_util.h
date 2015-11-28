@@ -67,7 +67,7 @@ typedef float float_t;
 // typedef unsigned short layer_size_t;
 typedef unsigned long layer_size_t;
 typedef size_t label_t;
-typedef std::vector<float_t> vec_t;
+    typedef af::array vec_t;
 
 class nn_error : public std::exception {
 public:
