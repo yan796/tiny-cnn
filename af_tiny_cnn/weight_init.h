@@ -62,7 +62,8 @@ public:
     void fill(vec_t *weight, layer_size_t fan_in, layer_size_t fan_out) override {
         const float_t weight_base = std::sqrt(scale_ / (fan_in + fan_out));
 
-        uniform_rand(weight->begin(), weight->end(), -weight_base, weight_base);     
+        *weight = (2*weight_base)*af::randu(weight->elements())-weight_base;
+        //uniform_rand(weight->begin(), weight->end(), -weight_base, weight_base);
     }
 
     virtual xavier* clone() const override { return new xavier(scale_); }
@@ -85,7 +86,8 @@ public:
 
         const float_t weight_base = scale_ / std::sqrt(fan_in);
 
-        uniform_rand(weight->begin(), weight->end(), -weight_base, weight_base);
+        *weight = (2*weight_base)*af::randu(weight->elements())-weight_base;
+        //uniform_rand(weight->begin(), weight->end(), -weight_base, weight_base);
     }
 
     virtual lecun* clone() const override { return new lecun(scale_); }
@@ -100,7 +102,8 @@ public:
         CNN_UNREFERENCED_PARAMETER(fan_in);
         CNN_UNREFERENCED_PARAMETER(fan_out);
 
-        std::fill(weight->begin(), weight->end(), scale_);
+        *weight = af::constant(scale_,weight->elements());
+        //std::fill(weight->begin(), weight->end(), scale_);
     }
 
     virtual constant* clone() const override { return new constant(scale_); }

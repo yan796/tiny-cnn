@@ -49,13 +49,14 @@ struct stateful_optimizer : public optimizer<usesHessian> {
 
 protected:
     template <int Index>
-    std::vector<value_t>& get(const vec_t& key) {
+    vec_t& get(const vec_t& key) {
         static_assert(Index < N, "index out of range");
-        if (E_[Index][&key].empty())
-            E_[Index][&key].resize(key.size(), value_t());
+        if (E_[Index][&key].elements() == 0)
+            E_[Index][&key] = af::constant(value_t(), key.elements());
+            //E_[Index][&key].resize(key.elements(), value_t());
         return E_[Index][&key];
     }
-    std::unordered_map<const vec_t*, std::vector<value_t>> E_[N];
+    std::unordered_map<const vec_t*, vec_t> E_[N];
 };
 
 /**
@@ -70,9 +71,10 @@ public:
     gradient_descent_levenberg_marquardt() : alpha(0.00085), mu(0.02) {}
 
     void update(const vec_t& dW, const vec_t& Hessian, vec_t& W) {
-        for_i(W.size(), [&](int i){
-            W[i] = W[i] - (alpha / (Hessian[i] + mu)) * dW[i];
-        });
+        W = W - (alpha / (Hessian + mu)) * dW;
+//        for_i(W.size(), [&](int i){
+//            W[i] = W[i] - (alpha / (Hessian[i] + mu)) * dW[i];
+//        });
     }
 
     float_t alpha; // learning rate
@@ -92,10 +94,14 @@ struct adagrad : public stateful_optimizer<float_t, 1, false> {
     void update(const vec_t& dW, const vec_t& /*Hessian*/, vec_t &W) {
         vec_t& g = get<0>(W);
 
-        for_i(W.size(), [&](int i) {
-            g[i] += dW[i] * dW[i];
-            W[i] -= alpha * dW[i] / (std::sqrt(g[i]) + eps);
-        });
+        g += dW * dW;
+        W -= alpha * dW / (sqrt(g) + eps);
+
+        
+//        for_i(W.size(), [&](int i) {
+//            g[i] += dW[i] * dW[i];
+//            W[i] -= alpha * dW[i] / (std::sqrt(g[i]) + eps);
+//        });
     }
 
     float_t alpha; // learning rate
@@ -115,11 +121,14 @@ struct RMSprop : public stateful_optimizer<float_t, 1, false> {
     void update(const vec_t& dW, const vec_t& /*Hessian*/, vec_t& W) {
         vec_t& g = get<0>(W);
 
-        for_i(W.size(), [&](int i)
-        {
-            g[i] = mu * g[i] + (1 - mu) * dW[i] * dW[i];
-            W[i] -= alpha * dW[i] / std::sqrt(g[i] + eps);
-        });
+        g = mu * g + (1 - mu) * dW * dW;
+        W -= alpha * dW / sqrt(g + eps);
+        
+//        for_i(W.size(), [&](int i)
+//        {
+//            g[i] = mu * g[i] + (1 - mu) * dW[i] * dW[i];
+//            W[i] -= alpha * dW[i] / std::sqrt(g[i] + eps);
+//        });
     }
 
     float_t alpha; // learning rate
@@ -143,13 +152,18 @@ struct adam : public stateful_optimizer<float_t, 2, false> {
         vec_t& vt = get<1>(W);
 
         b1_t*=b1;b2_t*=b2;
+        
+        mt = b1 * mt + (1 - b1) * dW;
+        vt = b2 * vt + (1 - b2) * dW * dW;
+        
+        W -= alpha * ( mt/(1-b1_t) ) / sqrt( (vt/(1-b2_t)) + eps);
 
-        for_i(W.size(), [&](int i){
-            mt[i] = b1 * mt[i] + (1 - b1) * dW[i];
-            vt[i] = b2 * vt[i] + (1 - b2) * dW[i] * dW[i];
-
-            W[i] -= alpha * ( mt[i]/(1-b1_t) ) / std::sqrt( (vt[i]/(1-b2_t)) + eps);
-        });
+//        for_i(W.size(), [&](int i){
+//            mt[i] = b1 * mt[i] + (1 - b1) * dW[i];
+//            vt[i] = b2 * vt[i] + (1 - b2) * dW[i] * dW[i];
+//
+//            W[i] -= alpha * ( mt[i]/(1-b1_t) ) / std::sqrt( (vt[i]/(1-b2_t)) + eps);
+//        });
     }
 
     float_t alpha; // learning rate
@@ -171,10 +185,15 @@ private:
 struct gradient_descent : public optimizer<false> {
     gradient_descent() : alpha(0.01), lambda(0.0) {}
 
+    
     void update(const vec_t& dW, const vec_t& /*Hessian*/, vec_t& W) {
-        for_i(W.size(), [&](int i){
-            W[i] = W[i] - alpha * (dW[i] + lambda * W[i]);
-        });
+        
+        
+         W = W - alpha * (dW + lambda * W);
+        
+//        for_i(W.size(), [&](int i){
+//            W[i] = W[i] - alpha * (dW[i] + lambda * W[i]);
+//        });
     }
 
     float_t alpha; // learning rate
@@ -194,12 +213,16 @@ public:
 
     void update(const vec_t& dW, const vec_t& /*Hessian*/, vec_t& W) {
         vec_t& dWprev = get<0>(W);
+        
+        vec_t V = mu * dWprev - alpha * (dW + W * lambda);
+        W      += V;
+        dWprev =  V;
 
-        for_i(W.size(), [&](int i){
-            float_t V = mu * dWprev[i] - alpha * (dW[i] + W[i] * lambda);
-            W[i]      += V;
-            dWprev[i] =  V;
-        });
+//        for_i(W.size(), [&](int i){
+//            float_t V = mu * dWprev[i] - alpha * (dW[i] + W[i] * lambda);
+//            W[i]      += V;
+//            dWprev[i] =  V;
+//        });
     }
 
     float_t alpha; // learning rate

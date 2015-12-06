@@ -67,11 +67,11 @@ public:
 
 template <typename E>
 vec_t gradient(const vec_t& y, const vec_t& t) {
-    vec_t grad(y.size());
-    assert(y.size() == t.size());
+    vec_t grad(y.elements());
+    assert(y.elements() == t.elements());
 
-    for (size_t i = 0; i < y.size(); i++)
-        grad[i] = E::df(y[i], t[i]);
+    for (size_t i = 0; i < y.elements(); i++)
+        grad(i) = E::df(y(i), t(i));
 
     return grad;
 }

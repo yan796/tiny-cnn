@@ -72,11 +72,12 @@ inline void parse_mnist_image(std::ifstream& ifs,
 
     ifs.read((char*) &image_vec[0], header.num_rows * header.num_cols);
 
-    dst.resize(width * height, scale_min);
+    //dst.resize(width * height, scale_min);
+    dst = af::constant(scale_min, width * height);
 
     for (size_t y = 0; y < header.num_rows; y++)
       for (size_t x = 0; x < header.num_cols; x++)
-        dst[width * (y + y_padding) + x + x_padding]
+        dst(width * (y + y_padding) + x + x_padding)
         = (image_vec[y * header.num_cols + x] / 255.0) * (scale_max - scale_min) + scale_min;
 }
 

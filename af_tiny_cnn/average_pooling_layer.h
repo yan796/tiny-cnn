@@ -27,7 +27,7 @@
 #pragma once
 #include "util.h"
 #include "partial_connected_layer.h"
-#include "image.h"
+//#include "image.h"
 #include "activation_function.h"
 
 namespace tiny_cnn {
@@ -52,9 +52,9 @@ public:
         init_connection(pooling_size);
     }
 
-    image<> output_to_image(size_t worker_index = 0) const override {
-        return vec2image<unsigned char>(output_[worker_index], out_);
-    }
+//    image<> output_to_image(size_t worker_index = 0) const override {
+//        return vec2image<unsigned char>(output_[worker_index], out_);
+//    }
 
     index3d<layer_size_t> in_shape() const override { return in_; }
     index3d<layer_size_t> out_shape() const override { return out_; }

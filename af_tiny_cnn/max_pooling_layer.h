@@ -28,7 +28,7 @@
 #include "util.h"
 #include "partial_connected_layer.h"
 #include "activation_function.h"
-#include "image.h"
+//#include "image.h"
 
 namespace tiny_cnn {
     
@@ -87,29 +87,34 @@ public:
         const activation::function& prev_h = prev_->activation_function();
         vec_t& prev_delta = prev_delta_[index];
 
-        for_(parallelize_, 0, in_size_, [&](const blocked_range& r) {
-            for (int i = r.begin(); i != r.end(); i++) {
-                int outi = in2out_[i];
-                prev_delta[i] = (out2inmax_[outi] == i) ? current_delta[outi] * prev_h.df(prev_out[i]) : 0.0;
-            }
-        });
-        return prev_->back_propagation(prev_delta_[index], index);
+        
+        prev_delta = 0;
+        prev_delta(out2inmax_[in2out_]) = current_delta[in2out_] * prev_h.df(prev_out);
+//        for_(parallelize_, 0, in_size_, [&](const blocked_range& r) {
+//            for (int i = r.begin(); i != r.end(); i++) {
+//                int outi = in2out_[i];
+//                prev_delta[i] = (out2inmax_[outi] == i) ? current_delta[outi] * prev_h.df(prev_out[i]) : 0.0;
+//            }
+//        });
+        
+        return prev_->back_propagation(prev_delta_(index), index);
     }
 
     const vec_t& back_propagation_2nd(const vec_t& current_delta2) override {
-        const vec_t& prev_out = prev_->output(0);
-        const activation::function& prev_h = prev_->activation_function();
-
-        for (int i = 0; i < in_size_; i++) {
-            int outi = in2out_[i];
-            prev_delta2_[i] = (out2inmax_[outi] == i) ? current_delta2[outi] * sqr(prev_h.df(prev_out[i])) : 0.0;
-        }
-        return prev_->back_propagation_2nd(prev_delta2_);
+        throw std::runtime_error("back_propagation_2nd is NOT implemented");
+//        const vec_t& prev_out = prev_->output(0);
+//        const activation::function& prev_h = prev_->activation_function();
+//
+//        for (int i = 0; i < in_size_; i++) {
+//            int outi = in2out_[i];
+//            prev_delta2_[i] = (out2inmax_[outi] == i) ? current_delta2[outi] * sqr(prev_h.df(prev_out[i])) : 0.0;
+//        }
+          return prev_->back_propagation_2nd(prev_delta2_);
     }
 
-    image<> output_to_image(size_t worker_index = 0) const override {
-        return vec2image<unsigned char>(output_[worker_index], out_);
-    }
+//    image<> output_to_image(size_t worker_index = 0) const override {
+//        return vec2image<unsigned char>(output_[worker_index], out_);
+//    }
 
     index3d<layer_size_t> in_shape() const override { return in_; }
     index3d<layer_size_t> out_shape() const override { return out_; }

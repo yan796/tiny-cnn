@@ -30,7 +30,6 @@
 #include <memory>
 #include "util.h"
 #include "product.h"
-#include "image.h"
 #include "activation_function.h"
 #include "weight_init.h"
 
@@ -68,25 +67,29 @@ public:
         weight_init_->fill(&W_, fan_in_size(), fan_out_size());
         bias_init_->fill(&b_, fan_in_size(), fan_out_size());
 
-        std::fill(Whessian_.begin(), Whessian_.end(), 0.0);
-        std::fill(bhessian_.begin(), bhessian_.end(), 0.0);
+        Whessian_ = 0;
+        bhessian_ = 0;
+//        std::fill(Whessian_.begin(), Whessian_.end(), 0.0);
+//        std::fill(bhessian_.begin(), bhessian_.end(), 0.0);
         clear_diff(CNN_TASK_SIZE);
     }
 
     void divide_hessian(int denominator) {
-        for (auto& w : Whessian_) w /= denominator;
-        for (auto& b : bhessian_) b /= denominator;
+        Whessian_ /= denominator;
+        bhessian_ /= denominator;
+//        for (auto& w : Whessian_) w /= denominator;
+//        for (auto& b : bhessian_) b /= denominator;
     }
 
     /////////////////////////////////////////////////////////////////////////
     // getter
 
-    const vec_t& output(int worker_index) const { return output_[worker_index]; }
-    const vec_t& delta(int worker_index) const { return prev_delta_[worker_index]; }
+    vec_t output(int worker_index) const { return output_(worker_index); }
+    vec_t delta(int worker_index) const { return prev_delta_(worker_index); }
     vec_t& weight() { return W_; }
     vec_t& bias() { return b_; }
-    vec_t& weight_diff(int index) { return dW_[index]; }
-    vec_t& bias_diff(int index) { return db_[index]; }
+    vec_t weight_diff(int index) { return dW_(index); }
+    vec_t bias_diff(int index) { return db_(index); }
     bool is_exploded() const { return has_infinite(W_) || has_infinite(b_); }
     layer_base* next() { return next_; }
     layer_base* prev() { return prev_; }
@@ -98,7 +101,7 @@ public:
     virtual layer_size_t out_size() const { return out_size_; }
 
     ///< number of parameters
-    virtual size_t param_size() const { return W_.size() + b_.size(); }
+    virtual size_t param_size() const { return W_.elements() + b_.elements(); }
 
     ///< number of incoming connections for each output unit
     virtual size_t fan_in_size() const = 0;
@@ -138,19 +141,17 @@ public:
     // save/load
     virtual void save(std::ostream& os) const {
         if (is_exploded()) throw nn_error("failed to save weights because of infinite weight");
-        for (auto w : W_) os << w << " ";
-        for (auto b : b_) os << b << " ";
-        // for (auto wh : Whessian_) os << wh << " ";
-        // for (auto bh : bhessian_) os << bh << " "; 
+        
+        throw std::runtime_error("TODO: (SAVE) implement me");
+//        for (auto w : W_) os << w << " ";
+//        for (auto b : b_) os << b << " ";
+
     }
 
     virtual void load(std::istream& is) {
-        for (auto& w : W_) is >> w;
-        for (auto& b : b_) is >> b;
-        // for (auto& wh : Whessian_) is >> wh ;
-        // for (auto& bh : bhessian_) is >> bh ; 
-        // clear_diff(CNN_TASK_SIZE);
-        // post_update();
+        throw std::runtime_error("TODO: (LOAD) implement me");
+//        for (auto& w : W_) is >> w;
+//        for (auto& b : b_) is >> b;
     }
 
     /////////////////////////////////////////////////////////////////////////
@@ -159,9 +160,9 @@ public:
     ///< visualize latest output of this layer
     ///< default implementation interpret output as 1d-vector,
     ///< so "visual" layer(like convolutional layer) should override this for better visualization.
-    virtual image<> output_to_image(size_t worker_index = 0) const {
-        return vec2image<unsigned char>(output_[worker_index]);
-    }
+//    virtual image<> output_to_image(size_t worker_index = 0) const {
+//        return vec2image<unsigned char>(output_[worker_index]);
+//    }
 
     /////////////////////////////////////////////////////////////////////////
     // fprop/bprop
@@ -170,46 +171,50 @@ public:
      * return output vector
      * output vector must be stored to output_[worker_index]
      **/
-    virtual const vec_t& forward_propagation(const vec_t& in, size_t worker_index) = 0;
+    virtual const vec_t forward_propagation(const vec_t& in, size_t worker_index) = 0;
 
     /**
      * return delta of previous layer (delta=\frac{dE}{da}, a=wx in fully-connected layer)
      * delta must be stored to prev_delta_[worker_index]
      **/
-    virtual const vec_t& back_propagation(const vec_t& current_delta, size_t worker_index) = 0;
+    virtual const vec_t back_propagation(const vec_t& current_delta, size_t worker_index) = 0;
 
     /**
      * return delta2 of previous layer (delta2=\frac{d^2E}{da^2}, diagonal of hessian matrix)
      * it is never called if optimizer is hessian-free
      **/
-    virtual const vec_t& back_propagation_2nd(const vec_t& current_delta2) = 0;
+    virtual const vec_t back_propagation_2nd(const vec_t& current_delta2) = 0;
 
     // called afrer updating weight
     virtual void post_update() {}
 
     template <typename Optimizer>
     void update_weight(Optimizer *o, int worker_size, size_t batch_size) {
-        if (W_.empty()) return;
+        if (W_.elements() == 0) return;
 
         merge(worker_size, batch_size);
 
-        o->update(dW_[0], Whessian_, W_);
-        o->update(db_[0], bhessian_, b_);
+        o->update(dW_(0), Whessian_, W_);
+        o->update(db_(0), bhessian_, b_);
 
         clear_diff(worker_size);
         post_update();
     }
 
     bool has_same_weights(const layer_base& rhs, float_t eps) const {
-        if (W_.size() != rhs.W_.size() || b_.size() != rhs.b_.size())
+        if (W_.elements() != rhs.W_.elements() || b_.elements() != rhs.b_.elements())
             return false;
 
-        for (size_t i = 0; i < W_.size(); i++)
-          if (std::abs(W_[i] - rhs.W_[i]) > eps) return false;
-        for (size_t i = 0; i < b_.size(); i++)
-          if (std::abs(b_[i] - rhs.b_[i]) > eps) return false;
-
-        return true;
+        af::array test = af::anyTrue(abs(W_ - rhs.W_) > eps) || af::anyTrue(abs(b_ - rhs.b_) > eps);
+        bool *res = test.host<bool>();
+        return !res[0];
+        
+//        for (size_t i = 0; i < W_.size(); i++)
+//          if (std::abs(W_[i] - rhs.W_[i]) > eps) return false;
+//        for (size_t i = 0; i < b_.size(); i++)
+//          if (std::abs(b_[i] - rhs.b_[i]) > eps) return false;
+//
+//        return true;
     }
 
 protected:
@@ -219,13 +224,13 @@ protected:
 
     layer_base* next_;
     layer_base* prev_;
-    vec_t a_[CNN_TASK_SIZE];          // w * x
-    vec_t output_[CNN_TASK_SIZE];     // last output of current layer, set by fprop
-    vec_t prev_delta_[CNN_TASK_SIZE]; // last delta of previous layer, set by bprop
+    vec_t a_;//[CNN_TASK_SIZE];          // w * x
+    vec_t output_;//[CNN_TASK_SIZE];     // last output of current layer, set by fprop
+    vec_t prev_delta_;//[CNN_TASK_SIZE]; // last delta of previous layer, set by bprop
     vec_t W_;          // weight vector
     vec_t b_;          // bias vector
-    vec_t dW_[CNN_TASK_SIZE];
-    vec_t db_[CNN_TASK_SIZE];
+    vec_t dW_;//[CNN_TASK_SIZE] //vectorize as 1D N*CNN_TASK_SIZE
+    vec_t db_;//[CNN_TASK_SIZE]
 
     vec_t Whessian_; // diagonal terms of hessian matrix
     vec_t bhessian_;
@@ -235,20 +240,35 @@ protected:
 
 private:
     void merge(size_t worker_size, size_t batch_size) {
-        for (size_t i = 1; i < worker_size; i++)
-            vectorize::reduce<float_t>(&dW_[i][0], dW_[i].size(), &dW_[0][0]);
-        for (size_t i = 1; i < worker_size; i++)
-            vectorize::reduce<float_t>(&db_[i][0], db_[i].size(), &db_[0][0]);
+        
+        
+        dW_ = sum(dW_,1)/ batch_size;
+        db_ = sum(db_,1)/ batch_size;
+        
+//        for (size_t i = 1; i < worker_size; i++)
+//        {
+//            dW_[0][0] += sum(dW_[i]);
+//            db_[0][0] += sum(db_[i]);
+//        }
+        
+//        for (size_t i = 1; i < worker_size; i++)
+//            vectorize::reduce<float_t>(&dW_[i][0], dW_[i].size(), &dW_[0][0]);
+//        for (size_t i = 1; i < worker_size; i++)
+//            vectorize::reduce<float_t>(&db_[i][0], db_[i].size(), &db_[0][0]);
 
-        std::transform(dW_[0].begin(), dW_[0].end(), dW_[0].begin(), [&](float_t x) { return x / batch_size; });
-        std::transform(db_[0].begin(), db_[0].end(), db_[0].begin(), [&](float_t x) { return x / batch_size; });
+//        std::transform(dW_[0].begin(), dW_[0].end(), dW_[0].begin(), [&](float_t x) { return x / batch_size; });
+//        std::transform(db_[0].begin(), db_[0].end(), db_[0].begin(), [&](float_t x) { return x / batch_size; });
     }
 
     void clear_diff(size_t worker_size) {
-        for (size_t i = 0; i < worker_size; i++) {
-            std::fill(dW_[i].begin(), dW_[i].end(), 0.0);
-            std::fill(db_[i].begin(), db_[i].end(), 0.0);
-        }
+         for (size_t i = 0; i < worker_size; i++) {
+             dW_(i) = 0;
+             db_(i) = 0;
+         }
+//        for (size_t i = 0; i < worker_size; i++) {
+//            std::fill(dW_[i].begin(), dW_[i].end(), 0.0);
+//            std::fill(db_[i].begin(), db_[i].end(), 0.0);
+//        }
     }
 
     void set_size(layer_size_t in_dim, layer_size_t out_dim, size_t weight_dim, size_t bias_dim) {
@@ -256,17 +276,25 @@ private:
             in_size_ = in_dim;
             out_size_ = out_dim;
 
-            W_.resize(weight_dim);
-            b_.resize(bias_dim);
-            Whessian_.resize(weight_dim);
-            bhessian_.resize(bias_dim);
-            prev_delta2_.resize(in_dim);
+            W_ = af::array(weight_dim);
+            b_ = af::array(bias_dim);
+            Whessian_ = af::array(weight_dim);
+            bhessian_ = af::array(bias_dim);
+            prev_delta2_= af::array(in_dim);
 
-            for (auto& o : output_)     o.resize(out_dim);
-            for (auto& a : a_)          a.resize(out_dim);
-            for (auto& p : prev_delta_) p.resize(in_dim);
-            for (auto& dw : dW_) dw.resize(weight_dim);
-            for (auto& db : db_) db.resize(bias_dim);
+//            for (auto& o : output_)     o.resize(out_dim);
+//            for (auto& a : a_)          a.resize(out_dim);
+//            for (auto& p : prev_delta_) p.resize(in_dim);
+//            for (auto& dw : dW_) dw.resize(weight_dim);
+//            for (auto& db : db_) db.resize(bias_dim);
+            
+            output_= af::array(CNN_TASK_SIZE,out_dim);
+            a_= af::array(CNN_TASK_SIZE,out_dim);
+            prev_delta_= af::array(CNN_TASK_SIZE,in_dim);
+           dW_= af::array(CNN_TASK_SIZE,weight_dim);
+            db_= af::array(CNN_TASK_SIZE,bias_dim);
+            
+            
         } catch (const std::bad_alloc&) {
             throw nn_error(
                 format_str("memory allocation failed: layer size too large!\nin:%d,out:%d,weights:%d,biases:%d",
@@ -319,7 +347,7 @@ inline void data_mismatch(const layer_base& layer, const vec_t& data) {
     std::ostringstream os;
 
     os << std::endl;
-    os << "data dimension:    " << data.size() << std::endl;
+    os << "data dimension:    " << data.elements() << std::endl;
     os << "network dimension: " << layer.in_size() << "(" << layer.layer_type() << ":" << layer.in_shape() << ")" << std::endl;
 
     std::string detail_info = os.str();

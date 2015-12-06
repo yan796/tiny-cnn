@@ -62,10 +62,14 @@ namespace tiny_cnn {
 
         explicit dropout(int out_dim)
             : out_dim_(out_dim), mask_(out_dim), ctx_(train_phase), mode_(per_data), dropout_rate_(0.5) {
-            for (int i = 0; i < CNN_TASK_SIZE; i++) {
-                masked_out_[i].resize(out_dim);
-                masked_delta_[i].resize(out_dim);
-            }
+            
+                masked_out_ = af::array(CNN_TASK_SIZE,out_dim);
+                masked_delta_ = af::array(CNN_TASK_SIZE,out_dim);
+                
+//            for (int i = 0; i < CNN_TASK_SIZE; i++) {
+//                masked_out_[i].resize(out_dim);
+//                masked_delta_[i].resize(out_dim);
+//            }
             shuffle();
         }
 
@@ -84,34 +88,40 @@ namespace tiny_cnn {
         }
 
         // mask output vector
-        const vec_t& filter_fprop(const vec_t& out, int index) {
+        vec_t filter_fprop(const vec_t& out, int index) {
             if (ctx_ == train_phase) {
-                for (int i = 0; i < out_dim_; i++)
-                    masked_out_[index][i] = out[i] * mask_[i];
+                masked_out_(index) = out * mask_;
+//                for (int i = 0; i < out_dim_; i++)
+//                    masked_out_[index][i] = out[i] * mask_[i];
             }
             else if (ctx_ == test_phase) {
-                for (int i = 0; i < out_dim_; i++)
-                    masked_out_[index][i] = out[i] * (1.0 - dropout_rate_);
+                 masked_out_(index) = out * (1.0 - dropout_rate_);
+//                for (int i = 0; i < out_dim_; i++)
+//                    masked_out_[index][i] = out[i] * (1.0 - dropout_rate_);
             }
             else {
                 throw nn_error("invalid context");
             }
-            return masked_out_[index];
+            return masked_out_(index);
         }
 
         // mask delta
-        const vec_t& filter_bprop(const vec_t& delta, int index) {
-            for (int i = 0; i < out_dim_; i++)
-                masked_delta_[index][i] = delta[i] * mask_[i];
+        vec_t filter_bprop(const vec_t& delta, int index) {
+            masked_delta_(index) = delta * mask_;
+            
+//            for (int i = 0; i < out_dim_; i++)
+//                masked_delta_[index][i] = delta[i] * mask_[i];
 
             if (mode_ == per_data) shuffle();
 
-            return masked_delta_[index];
+            return masked_delta_(index);
         }
 
         void shuffle() {
-            for (auto& m : mask_)
-                m = bernoulli(1.0 - dropout_rate_);
+            mask_ = (af::randu(mask_.elements()) <= (1.0 - dropout_rate_));
+            
+//            for (auto& m : mask_)
+//                m = bernoulli(1.0 - dropout_rate_);
         }
 
         void end_batch() {
@@ -120,9 +130,10 @@ namespace tiny_cnn {
 
     private:
         int out_dim_;
-        std::vector<uint8_t> mask_;
-        vec_t masked_out_[CNN_TASK_SIZE];
-        vec_t masked_delta_[CNN_TASK_SIZE];
+        vec_t mask_;
+        //std::vector<uint8_t> mask_;
+        vec_t masked_out_;//CC
+        vec_t masked_delta_;//[CNN_TASK_SIZE];
         context ctx_;
         mode mode_;
         double dropout_rate_;

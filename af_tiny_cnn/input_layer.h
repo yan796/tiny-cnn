@@ -1,5 +1,5 @@
 /*
-    Copyright (c) 2013, Taiga Nomi, Kwang Moo Yi, Yannick Verdie
+    Copyright (c) 2013, Taiga Nomi
     All rights reserved.
     
     Redistribution and use in source and binary forms, with or without
@@ -24,47 +24,48 @@
     (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS 
     SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
-
-/*
-    This  is an  implementation of  the  GHH activation  function  proposed in  "Learning to  Assign
-    Orientations to Feature Points", Kwang Moo Yi,  Yannick Verdie, Pascal Fua, and Vincent Lepetit,
-    2015. For details, please see arXiv:1511.04273. Also, when using this activation layer, please
-    cite the paper.
-
- */
-
 #pragma once
-#include "ghh_activation_layer.h"
-#include "dropout.h"
+#include "layer.h"
 
 namespace tiny_cnn {
 
-// normal 
-template<typename Activation>
-class ghh_activation_dropout_layer : public ghh_activation_layer<Activation, dropout> {
+class input_layer : public layer<activation::identity> {
 public:
-    ghh_activation_dropout_layer(layer_size_t out_dim, size_t num_in_sum, size_t num_in_max, dropout::mode mode = dropout::per_data)
-        : ghh_activation_layer<Activation, dropout>(out_dim, num_in_sum, num_in_max)
-    {
-        this->filter_.set_mode(mode);
+    typedef activation::identity Activation;
+    typedef layer<activation::identity> Base;
+    CNN_USE_LAYER_MEMBERS;
+
+    input_layer() : Base(0, 0, 0, 0) {}
+
+    layer_size_t in_size() const override { return next_ ? next_->in_size(): static_cast<layer_size_t>(0); }
+
+    index3d<layer_size_t> in_shape() const override { return next_ ? next_->in_shape() : index3d<layer_size_t>(0, 0, 0); }
+    index3d<layer_size_t> out_shape() const override { return next_ ? next_->out_shape() : index3d<layer_size_t>(0, 0, 0); }
+    std::string layer_type() const override { return next_ ? next_->layer_type() : "input"; }
+
+    const vec_t forward_propagation(const vec_t& in, size_t index) override {
+        output_(index) = in;
+        return next_ ? next_->forward_propagation(in, index) : output_(index);
     }
 
-    void set_dropout_rate(double rate) {
-        this->filter_.set_dropout_rate(rate);
+    const vec_t back_propagation(const vec_t& current_delta, size_t /*index*/) override {
+        return current_delta;
     }
 
-    /**
-     * set dropout-context (training-phase or test-phase)
-     **/
-    void set_context(dropout::context ctx) {
-        this->filter_.set_context(ctx);
+    const vec_t back_propagation_2nd(const vec_t& current_delta2) override {
+        return current_delta2;
     }
 
-    std::string layer_type() const override { return "ghh_dropout"; }
+    size_t connection_size() const override {
+        return in_size_;
+    }
 
-private:
-    void post_update() override {
-        this->filter_.end_batch();
+    size_t fan_in_size() const override {
+        return 1;
+    }
+
+    size_t fan_out_size() const override {
+        return 1;
     }
 };
 

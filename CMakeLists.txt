@@ -5,6 +5,52 @@
 #-DUSE_SSE=ON/OFF  (default on)
 #-DUSE_AVX=ON/OFF  (default on)
 
+
+
+# ----------------------------------------------------------------------------
+#   MACRO definition
+# ----------------------------------------------------------------------------
+
+
+MACRO(GET_HDRS ROOT_DIR TINY_CNN_HRDS)
+    SET(${TINY_CNN_HRDS} "")  #empty variable
+    file(GLOB HDRS "${ROOT_DIR}*.h")
+    foreach(l ${TINY_CNN_HRDS})
+        list(APPEND ${TINY_CNN_HRDS} "${ROOT_DIR}${HDRS}" )
+    endforeach()
+ENDMACRO()
+
+    ###macro needed for ArrayFire
+    # A macro to build an ArrayFire example
+    # For most uses only FIND_PACKAGE(ArrayFire REQUIRED), ADD_EXECUTABLE(...)
+    # and TARGET_LINK_LIBRARIES(... ${ARRAYFIRE_LIBRARIES}) are needed
+    MACRO(BUILD_FILE EXAMPLE_NAME EXAMPLE_SOURCE BACKEND_NAME BACKEND_LIBRARIES OTHER_LIBRARIES OUT_DIR_NAME)
+        ADD_EXECUTABLE(${EXAMPLE_NAME}_${BACKEND_NAME} ${EXAMPLE_SOURCE} )
+        TARGET_LINK_LIBRARIES(${EXAMPLE_NAME}_${BACKEND_NAME} ${BACKEND_LIBRARIES} ${OTHER_LIBRARIES})
+        # SET_TARGET_PROPERTIES(example_${EXAMPLE_NAME}_${BACKEND_NAME}
+        #     PROPERTIES
+        #     OUTPUT_NAME ${EXAMPLE_NAME}_${BACKEND_NAME}
+        #     RUNTIME_OUTPUT_DIRECTORY ${OUT_DIR_NAME}
+        #     FOLDER "Examples/${BACKEND_NAME}")
+    ENDMACRO()
+
+    # A macro to build a list of files
+    # For most uses only FIND_PACKAGE(ArrayFire REQUIRED), ADD_EXECUTABLE(...)
+    # and TARGET_LINK_LIBRARIES(... ${ARRAYFIRE_LIBRARIES}) are needed
+    MACRO(BUILD_ALL FILES BACKEND_NAME BACKEND_LIBRARIES OTHER_LIBRARIES)
+
+        FOREACH(FILE ${FILES})
+            GET_FILENAME_COMPONENT(EXAMPLE ${FILE} NAME_WE)
+            GET_FILENAME_COMPONENT(FULL_DIR_NAME ${FILE} PATH)
+            GET_FILENAME_COMPONENT(DIR_NAME ${FULL_DIR_NAME} NAME)
+
+            BUILD_FILE(${EXAMPLE} ${FILE} ${BACKEND_NAME} "${BACKEND_LIBRARIES}" "${OTHER_LIBRARIES}" ${DIR_NAME})
+        ENDFOREACH()
+    ENDMACRO()
+
+
+
+
 # ----------------------------------------------------------------------------
 #   Basic Configuration
 # ----------------------------------------------------------------------------
@@ -52,11 +98,9 @@ OPTION(USE_AVX 	"Set to ON to use avx" ON)
 # ----------------------------------------------------------------------------
 #   Default variables
 # ----------------------------------------------------------------------------
-
- SET(ROOT_DIR  ${PROJECT_SOURCE_DIR}/tiny_cnn  )  ##default for all, can be changed if AF is detected
- SET( TINY_CNN_HRDS tiny_cnn/activation_function.h    tiny_cnn/cifar10_parser.h  tiny_cnn/convolutional_layer.h  tiny_cnn/display.h  tiny_cnn/fully_connected_dropout_layer.h  tiny_cnn/image.h        tiny_cnn/layer.h   tiny_cnn/loss_function.h      tiny_cnn/mnist_parser.h  tiny_cnn/optimizer.h                tiny_cnn/product.h   tiny_cnn/util.h
-tiny_cnn/average_pooling_layer.h  tiny_cnn/config.h          tiny_cnn/deform.h               tiny_cnn/dropout.h  tiny_cnn/fully_connected_layer.h          tiny_cnn/input_layer.h  tiny_cnn/layers.h  tiny_cnn/max_pooling_layer.h  tiny_cnn/network.h       tiny_cnn/partial_connected_layer.h  tiny_cnn/tiny_cnn.h  tiny_cnn/weight_init.h)
-
+ SET(ROOT_DIR  ${PROJECT_SOURCE_DIR}/tiny_cnn/  )  ##default for all, can be changed if AF is detected
+ GET_HDRS("${ROOT_DIR}" "${TINY_CNN_HRDS}")
+ SET(FILES example/sample_train.cpp example/sample_test.cpp test/unitary_test.cpp)
 
 # ----------------------------------------------------------------------------
 #   Find Dependencies
@@ -66,49 +110,18 @@ IF(USE_TBB)
     find_package(TBB REQUIRED)
     add_definitions(-DCNN_USE_TBB)
     include_directories(${TBB_INCLUDE_DIRS})
+    include_directories(${ROOT_DIR})
     link_directories(${TBB_LIBRARY_DIRS})
-    SET(REQUIRED_LIBRARIES  ${REQUIRED_LIBRARIES} ${TBB_LIBRARIES}  )
+    #SET(REQUIRED_LIBRARIES  ${REQUIRED_LIBRARIES} ${TBB_LIBRARIES}  )
+    BUILD_ALL("${FILES}" tbb "" "${TINY_CNN_HRDS};${TBB_LIBRARIES}")
 ELSEIF(USE_OMP)
 find_package(OpenMP  REQUIRED)
         set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${OpenMP_C_FLAGS}")
         set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
         add_definitions( -DCNN_USE_OMP)
+        include_directories(${ROOT_DIR})
+        BUILD_ALL("${FILES}" omp "" "${TINY_CNN_HRDS}")
 ELSEIF(USE_AF)
-
-
-    ###macro needed for ArrayFire
-
-
-    # A macro to build an ArrayFire example
-    # For most uses only FIND_PACKAGE(ArrayFire REQUIRED), ADD_EXECUTABLE(...)
-    # and TARGET_LINK_LIBRARIES(... ${ARRAYFIRE_LIBRARIES}) are needed
-    MACRO(BUILD_EXAMPLE EXAMPLE_NAME EXAMPLE_SOURCE BACKEND_NAME BACKEND_LIBRARIES OTHER_LIBRARIES OUT_DIR_NAME)
-        ADD_EXECUTABLE(example_${EXAMPLE_NAME}_${BACKEND_NAME} ${EXAMPLE_SOURCE} )
-        TARGET_LINK_LIBRARIES(example_${EXAMPLE_NAME}_${BACKEND_NAME} ${BACKEND_LIBRARIES} ${OTHER_LIBRARIES})
-        # SET_TARGET_PROPERTIES(example_${EXAMPLE_NAME}_${BACKEND_NAME}
-        #     PROPERTIES
-        #     OUTPUT_NAME ${EXAMPLE_NAME}_${BACKEND_NAME}
-        #     RUNTIME_OUTPUT_DIRECTORY ${OUT_DIR_NAME}
-        #     FOLDER "Examples/${BACKEND_NAME}")
-    ENDMACRO()
-
-    # A macro to build a list of files
-    # For most uses only FIND_PACKAGE(ArrayFire REQUIRED), ADD_EXECUTABLE(...)
-    # and TARGET_LINK_LIBRARIES(... ${ARRAYFIRE_LIBRARIES}) are needed
-    MACRO(BUILD_ALL FILES BACKEND_NAME BACKEND_LIBRARIES OTHER_LIBRARIES)
-
-        FOREACH(FILE ${FILES})
-            GET_FILENAME_COMPONENT(EXAMPLE ${FILE} NAME_WE)
-            GET_FILENAME_COMPONENT(FULL_DIR_NAME ${FILE} PATH)
-            GET_FILENAME_COMPONENT(DIR_NAME ${FULL_DIR_NAME} NAME)
-
-            BUILD_EXAMPLE(${EXAMPLE} ${FILE} ${BACKEND_NAME} "${BACKEND_LIBRARIES}" "${OTHER_LIBRARIES}" ${DIR_NAME})
-        ENDFOREACH()
-    ENDMACRO()
-
-
-
-
 
 	FIND_PACKAGE(CUDA QUIET)
     FIND_PACKAGE(OpenCL QUIET)
@@ -116,24 +129,28 @@ ELSEIF(USE_AF)
 
     ###change global for arrayfire
     #the root
-    SET(ROOT_DIR  ${PROJECT_SOURCE_DIR}/af_tiny_cnn  )
-    #each filename is updated with af prefix
-    FOREACH(FILE ${TINY_CNN_HRDS})
-            SET( TINY_CNN_HRDS_2 af_${FILE})
-    ENDFOREACH()
-    SET( TINY_CNN_HRDS_2 TINY_CNN_HRDS)
-    unset(TINY_CNN_HRDS_2)
+    SET(ROOT_DIR  ${PROJECT_SOURCE_DIR}/af_tiny_cnn/  )
+    GET_HDRS("${ROOT_DIR}" "${TINY_CNN_HRDS}")
+    SET(FILES example/af_sample_train.cpp example/af_sample_test.cpp test/af_unitary_test.cpp)
 
+
+    MESSAGE(STATUS "EXAMPLES: CPU backend is ON. ${TINY_CNN_HRDS}")
 
     INCLUDE_DIRECTORIES(${ArrayFire_INCLUDE_DIRS})
+    include_directories(${ROOT_DIR})
+
     if(${ArrayFire_CPU_FOUND})  # variable defined by FIND(ArrayFire ...)
         MESSAGE(STATUS "EXAMPLES: CPU backend is ON.")
         SET(REQUIRED_LIBRARIES  ${REQUIRED_LIBRARIES} ${ArrayFire_CPU_LIBRARIES} )
-        #BUILD_ALL("${FILES}" cpu ${ArrayFire_CPU_LIBRARIES} "")
+
+        BUILD_ALL("${FILES}" afcpu ${ArrayFire_CPU_LIBRARIES} "${TINY_CNN_HRDS}")
+
     elseif(TARGET afcpu)        # variable defined by the ArrayFire build tree
         MESSAGE(STATUS "EXAMPLES: CPU backend is ON.")
         SET(REQUIRED_LIBRARIES  ${REQUIRED_LIBRARIES} afcpu )
-        #BUILD_ALL("${FILES}" cpu afcpu "")
+
+        BUILD_ALL("${FILES}" afcpu afcpu "${TINY_CNN_HRDS}")
+
     else()
         MESSAGE(STATUS "EXAMPLES: CPU backend is OFF. afcpu was not found.")
     endif()
@@ -147,10 +164,15 @@ ELSEIF(USE_AF)
               DOC "CUDA NVVM Library"
               )
             MESSAGE(STATUS "EXAMPLES: CUDA backend is ON.")
-            #BUILD_ALL("${FILES}" cuda ${ArrayFire_CUDA_LIBRARIES} "${CUDA_CUBLAS_LIBRARIES};${CUDA_LIBRARIES};${CUDA_cusolver_LIBRARY};${CUDA_CUFFT_LIBRARIES};${CUDA_NVVM_LIBRARY};${CUDA_CUDA_LIBRARY}")
-            SET(REQUIRED_LIBRARIES  ${REQUIRED_LIBRARIES} ${ArrayFire_CUDA_LIBRARIES} "${CUDA_CUBLAS_LIBRARIES};${CUDA_LIBRARIES};${CUDA_cusolver_LIBRARY};${CUDA_CUFFT_LIBRARIES};${CUDA_NVVM_LIBRARY};${CUDA_CUDA_LIBRARY}" )
+
+        BUILD_ALL("${FILES}" cuda ${ArrayFire_CUDA_LIBRARIES} "${CUDA_CUBLAS_LIBRARIES};${CUDA_LIBRARIES};${CUDA_cusolver_LIBRARY};${CUDA_CUFFT_LIBRARIES};${CUDA_NVVM_LIBRARY};${CUDA_CUDA_LIBRARY}${TINY_CNN_HRDS}")
+
+         SET(REQUIRED_LIBRARIES  ${REQUIRED_LIBRARIES} ${ArrayFire_CUDA_LIBRARIES} "${CUDA_CUBLAS_LIBRARIES};${CUDA_LIBRARIES};${CUDA_cusolver_LIBRARY};${CUDA_CUFFT_LIBRARIES};${CUDA_NVVM_LIBRARY};${CUDA_CUDA_LIBRARY}" )
         elseif(TARGET afcuda)        # variable defined by the ArrayFire build tree
             MESSAGE(STATUS "EXAMPLES: CUDA backend is ON.")
+
+            BUILD_ALL("${FILES}" cuda afcuda "${TINY_CNN_HRDS}")
+
             #BUILD_ALL("${FILES}" cuda afcuda "")
             SET(REQUIRED_LIBRARIES  ${REQUIRED_LIBRARIES} afcuda )
         else()
@@ -176,6 +198,9 @@ ELSEIF(USE_AF)
         MESSAGE(STATUS "EXAMPLES: OPENCL backend is OFF. OPENCL was not found")
     endif()
 
+ELSE() #compile single core / no lib
+    include_directories(${ROOT_DIR})
+    BUILD_ALL("${FILES}" cpu "" "${TINY_CNN_HRDS}")
 ENDIF()
 # ----------------------------------------------------------------------------
 # COMPILER OPTIONS
@@ -222,14 +247,16 @@ ENDIF()
 # TARGETS
 #------------------------------------------------
 
-LINK_LIBRARIES(${REQUIRED_LIBRARIES} )
+# LINK_LIBRARIES(${REQUIRED_LIBRARIES} )
+# INCLUDE_DIRECTORIES(${ROOT_DIR})
 
-INCLUDE_DIRECTORIES(${ROOT_DIR} )
-
-ADD_EXECUTABLE(train example/train.cpp ${TINY_CNN_HRDS})
-ADD_EXECUTABLE(test example/test.cpp  ${TINY_CNN_HRDS})
-
-
+# if (USE_AF)
+#    # ADD_EXECUTABLE(af_unitary_test test/af_test.cpp  ${TINY_CNN_HRDS})
+# else()
+#     ADD_EXECUTABLE(sample_train example/sample_train.cpp ${TINY_CNN_HRDS})
+#     ADD_EXECUTABLE(sample_test example/sample_test.cpp  ${TINY_CNN_HRDS})
+#     ADD_EXECUTABLE(unitary_test test/unitary_test.cpp  ${TINY_CNN_HRDS})
+# endif()
 
 
 # ----------------------------------------------------------------------------

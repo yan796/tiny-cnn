@@ -261,13 +261,13 @@ public:
             vec_t& dw = current->weight_diff(0);
             vec_t& db = current->bias_diff(0);
 
-            if (w.empty()) continue;
+            if (w.elements() == 0) continue;
             
             switch (mode) {
             case GRAD_CHECK_ALL:
-                for (int i = 0; i < (int)w.size(); i++)
+                for (int i = 0; i < (int)w.elements(); i++)
                     if (calc_delta(in, &v[0], data_size, w, dw, i) > eps) return false;
-                for (int i = 0; i < (int)b.size(); i++)
+                for (int i = 0; i < (int)b.elements(); i++)
                     if (calc_delta(in, &v[0], data_size, b, db, i) > eps) return false;
                 break;
             case GRAD_CHECK_RANDOM:
@@ -342,7 +342,7 @@ private:
         for (int i = 0; i < num; i++) {
             assert(t[i] < outdim);
             vec->emplace_back(outdim, target_value_min());
-            vec->back()[t[i]] = target_value_max();
+            vec->back()(t[i]) = target_value_max();
         }
     }
 
@@ -404,76 +404,93 @@ private:
         return false;
     }
 
-    const vec_t& fprop(const vec_t& in, int idx = 0) {
-        if (in.size() != (size_t)in_dim())
+    const vec_t fprop(const vec_t& in, int idx = 0) {
+        if (in.elements() != (size_t)in_dim())
             data_mismatch(*layers_[0], in);
         return layers_.head()->forward_propagation(in, idx);
     }
-
+    
     float_t get_loss(const vec_t& out, const vec_t& t) {
         float_t e = 0.0;
-        assert(out.size() == t.size());
-        for_i(out.size(), [&](int i){ e += E::f(out[i], t[i]); });
+        assert(out.elements() == t.elements());
+        
+        e = sum(E::f(out, t));
+        //for_i(out.elements(), [&](int i){ e += E::f(out[i], t[i]); });
+        
         return e;
     }
-
+    
     void bprop_2nd(const vec_t& out) {
         vec_t delta(out_dim());
         const activation::function& h = layers_.tail()->activation_function();
-
+        
         if (is_canonical_link(h)) {
-            for_i(out_dim(), [&](int i){ delta[i] = target_value_max() * h.df(out[i]);});
+            
+            delta = target_value_max() * h.df(out);
+            //for_i(out_dim(), [&](int i){ delta[i] = target_value_max() * h.df(out[i]);});
+            
         } else {
-            for_i(out_dim(), [&](int i){ delta[i] = target_value_max() * h.df(out[i]) * h.df(out[i]);}); // FIXME
+            
+            delta = target_value_max() * h.df(out) * h.df(out);
+            //for_i(out_dim(), [&](int i){ delta[i] = target_value_max() * h.df(out[i]) * h.df(out[i]);}); // FIXME
         }
-
+        
         layers_.tail()->back_propagation_2nd(delta);
     }
-
+    
     void bprop(const vec_t& out, const vec_t& t, int idx = 0) {
         vec_t delta(out_dim());
         const activation::function& h = layers_.tail()->activation_function();
-
+        
         if (is_canonical_link(h)) {
-            for_i(out_dim(), [&](int i){ delta[i] = out[i] - t[i]; });
+            delta = out - t;
+            //for_i(out_dim(), [&](int i){ delta[i] = out[i] - t[i]; });
+            
         } else {
             vec_t dE_dy = gradient<E>(out, t);
-
+            
             // delta = dE/da = (dE/dy) * (dy/da)
-            for (size_t i = 0; i < out_dim(); i++) {
-                vec_t dy_da = h.df(out, i);
-                delta[i] = vectorize::dot(&dE_dy[0], &dy_da[0], out_dim());
-            }
+            
+            delta = dE_dy * h.df(out);
+            
+            //            for (size_t i = 0; i < out_dim(); i++) {
+            //                vec_t dy_da = h.df(out, i);
+            //                delta[i] = vectorize::dot(&dE_dy[0], &dy_da[0], out_dim());
+            //            }
         }
-
+        
         layers_.tail()->back_propagation(delta, idx);
     }
 
-    float_t calc_delta(const vec_t* in, const vec_t* v, int data_size, vec_t& w, vec_t& dw, int check_index) {
+    vec_t calc_delta(const vec_t* in, const vec_t* v, int data_size, vec_t& w, vec_t& dw, int check_index) {
         static const float_t delta = 1e-3;
 
-        std::fill(dw.begin(), dw.end(), 0.0);
+        dw = 0;
+        //std::fill(dw.begin(), dw.end(), 0.0);
 
         // calculate dw/dE by numeric
-        float_t prev_w = w[check_index];
+        vec_t prev_w = w(check_index);
 
-        w[check_index] = prev_w + delta;
-        float_t f_p = 0.0;
-        for_i(data_size, [&](int i){ f_p += get_loss(fprop(in[i]), v[i]); });
+        w(check_index) = prev_w + delta;
+        //float_t f_p = 0.0;
+        vec_t f_p = sum(get_loss(fprop(in), v));
+        //for_i(data_size, [&](int i){ f_p += get_loss(fprop(in[i]), v[i]); });
 
-        float_t f_m = 0.0;
-        w[check_index] = prev_w - delta;
-        for_i(data_size, [&](int i){ f_m += get_loss(fprop(in[i]), v[i]); });
+        //float_t f_m = 0.0;
+        w(check_index) = prev_w - delta;
+        vec_t f_m = sum(get_loss(fprop(in), v));
+        //for_i(data_size, [&](int i){ f_m += get_loss(fprop(in[i]), v[i]); });
 
-        float_t delta_by_numerical = (f_p - f_m) / (2.0 * delta);
-        w[check_index] = prev_w;
+        vec_t delta_by_numerical = (f_p - f_m) / (2.0 * delta);
+        w(check_index) = prev_w;
 
         // calculate dw/dE by bprop
-        for_i(data_size, [&](int i){ bprop(fprop(in[i]), v[i]); });
+        bprop(fprop(in), v);
+        //for_i(data_size, [&](int i){ bprop(fprop(in[i]), v[i]); });
 
-        float_t delta_by_bprop = dw[check_index];
+        vec_t delta_by_bprop = dw(check_index);
 
-        return std::abs(delta_by_bprop - delta_by_numerical);
+        return abs(delta_by_bprop - delta_by_numerical);
     }
 
     void check_t(size_t i, label_t t, layer_size_t dim_out) {
@@ -489,8 +506,8 @@ private:
     }
 
     void check_t(size_t i, const vec_t& t, layer_size_t dim_out) {
-        if (t.size() != dim_out)
-            throw nn_error(format_str("output dimension mismatch!\n dim(target[%u])=%u, dim(network output size=%u", i, t.size(), dim_out));
+        if (t.elements() != dim_out)
+            throw nn_error(format_str("output dimension mismatch!\n dim(target[%u])=%u, dim(network output size=%u", i, t.elements(), dim_out));
     }
 
     template <typename T>
@@ -504,8 +521,8 @@ private:
         size_t num = in.size();
 
         for (size_t i = 0; i < num; i++) {
-            if (in[i].size() != dim_in)
-                throw nn_error(format_str("input dimension mismatch!\n dim(data[%u])=%d, dim(network input)=%u", i, in[i].size(), dim_in));
+            if (in[i].elements() != dim_in)
+                throw nn_error(format_str("input dimension mismatch!\n dim(data[%u])=%d, dim(network input)=%u", i, in[i].elements(), dim_in));
 
             check_t(i, t[i], dim_out);
         }
@@ -529,32 +546,32 @@ private:
  * @param sizepatch [size of the patch, such as the total number of pixel in the patch is sizepatch*sizepatch ]
  * @return [vector of vec_c (sample) to be passed to test function]
  */
-std::vector<vec_t> image2vec(const float_t* data, const unsigned int  rows, const unsigned int cols, const unsigned int sizepatch, const unsigned int step=1)
-{
-    assert(step>0);
-    std::vector<vec_t> res((cols-sizepatch)*(rows-sizepatch)/(step*step),vec_t(sizepatch*sizepatch));
-        for_i((cols-sizepatch)*(rows-sizepatch)/(step*step), [&](int count)
-        {
-            const int j = step*(count / ((cols-sizepatch)/step));
-            const int i = step*(count % ((cols-sizepatch)/step));
-
-            //vec_t sample(sizepatch*sizepatch);
-
-            if (i+sizepatch < cols && j+sizepatch < rows)
-            for (unsigned int k=0;k<sizepatch*sizepatch;k++)
-            //for_i(sizepatch*sizepatch, [&](int k)
-            {
-                unsigned int y = k / sizepatch + j;
-                unsigned int x = k % sizepatch + i;
-                res[count][k] = data[x+y*cols];
-            }
-            //);
-            //res[count] = (sample);
-        });
-
-
-    return res;
-}
+//std::vector<vec_t> image2vec(const float_t* data, const unsigned int  rows, const unsigned int cols, const unsigned int sizepatch, const unsigned int step=1)
+//{
+//    assert(step>0);
+//    std::vector<vec_t> res((cols-sizepatch)*(rows-sizepatch)/(step*step),vec_t(sizepatch*sizepatch));
+//        for_i((cols-sizepatch)*(rows-sizepatch)/(step*step), [&](int count)
+//        {
+//            const int j = step*(count / ((cols-sizepatch)/step));
+//            const int i = step*(count % ((cols-sizepatch)/step));
+//
+//            //vec_t sample(sizepatch*sizepatch);
+//
+//            if (i+sizepatch < cols && j+sizepatch < rows)
+//            for (unsigned int k=0;k<sizepatch*sizepatch;k++)
+//            //for_i(sizepatch*sizepatch, [&](int k)
+//            {
+//                unsigned int y = k / sizepatch + j;
+//                unsigned int x = k % sizepatch + i;
+//                res[count][k] = data[x+y*cols];
+//            }
+//            //);
+//            //res[count] = (sample);
+//        });
+//
+//
+//    return res;
+//}
 
 
 /**

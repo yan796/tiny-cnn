@@ -25,11 +25,8 @@
     SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 #include <iostream>
-// #include <boost/timer.hpp>
-// #include <boost/progress.hpp>
 
 #include "tiny_cnn.h"
-//#define NOMINMAX
 //#include "imdebug.h"
 
 void sample1_convnet(std::string data_dir_path);
@@ -43,7 +40,7 @@ using namespace tiny_cnn::activation;
 
 int main(int argc,char **argv) {
     if (argc!=2){
-        std::cerr<<"Usage : "<<argv[0]<<" path_to_data (example:../data)"<<std::endl;
+        std::cerr<<"Usage : "<<argv[0]<<" path_to_data \n(example:"<<argv[0]<<" ../data)"<<std::endl;
         return -1;
     }
     // sample1_convnet(argv[1]);
@@ -280,8 +277,8 @@ void sample4_dropout(std::string data_dir_path)
 // using ghh_activation
 void sample5_convnet_ghh(std::string data_dir_path) {
     // construct LeNet-5 architecture
-    // network<mse, Adam> nn;
-    network<cross_entropy_multiclass, Adam> nn;
+    // network<mse, adam> nn;
+    network<cross_entropy_multiclass, adam> nn;
 
     // connection table [Y.Lecun, 1998 Table.1]
 // #define O true

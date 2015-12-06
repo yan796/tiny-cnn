@@ -27,7 +27,7 @@
 #pragma once
 #include "util.h"
 #include "partial_connected_layer.h"
-#include "image.h"
+//#include "image.h"
 #include "activation_function.h"
 
 
@@ -122,43 +122,43 @@ public:
         init_connection(connection_table, pad_type);
         this->remap();
     }
-
-    image<> output_to_image(size_t worker_index = 0) const override {
-        return vec2image<unsigned char>(output_[worker_index], out_);
-    }
-
-    image<> weight_to_image() const {
-        image<> img;
-        const layer_size_t border_width = 1;
-        const auto pitch = window_size_ + border_width;
-        const auto width = out_.depth_ * pitch + border_width;
-        const auto height = in_.depth_ * pitch + border_width;
-        const image<>::intensity_t bg_color = 255;
-
-        img.resize(width, height);
-        img.fill(bg_color);
-
-        auto minmax = std::minmax_element(this->W_.begin(), this->W_.end());
-
-        for (layer_size_t r = 0; r < in_.depth_; ++r) {
-            for (layer_size_t c = 0; c < out_.depth_; ++c) {
-                if (!connection_.is_connected(c, r)) continue;
-
-                const auto top = r * pitch + border_width;
-                const auto left = c * pitch + border_width;
-
-                for (layer_size_t y = 0; y < window_size_; ++y) {
-                    for (layer_size_t x = 0; x < window_size_; ++x) {
-                        const float_t w = W_[weight_.get_index(x, y, c * in_.depth_ + r)];
-
-                        img.at(left + x, top + y)
-                            = static_cast<image<>::intensity_t>(rescale(w, *minmax.first, *minmax.second, 0, 255));
-                    }
-                }
-            }
-        }
-        return img;
-    }
+//
+//    image<> output_to_image(size_t worker_index = 0) const override {
+//        return vec2image<unsigned char>(output_[worker_index], out_);
+//    }
+//
+//    image<> weight_to_image() const {
+//        image<> img;
+//        const layer_size_t border_width = 1;
+//        const auto pitch = window_size_ + border_width;
+//        const auto width = out_.depth_ * pitch + border_width;
+//        const auto height = in_.depth_ * pitch + border_width;
+//        const image<>::intensity_t bg_color = 255;
+//
+//        img.resize(width, height);
+//        img.fill(bg_color);
+//
+//        auto minmax = std::minmax_element(this->W_.begin(), this->W_.end());
+//
+//        for (layer_size_t r = 0; r < in_.depth_; ++r) {
+//            for (layer_size_t c = 0; c < out_.depth_; ++c) {
+//                if (!connection_.is_connected(c, r)) continue;
+//
+//                const auto top = r * pitch + border_width;
+//                const auto left = c * pitch + border_width;
+//
+//                for (layer_size_t y = 0; y < window_size_; ++y) {
+//                    for (layer_size_t x = 0; x < window_size_; ++x) {
+//                        const float_t w = W_[weight_.get_index(x, y, c * in_.depth_ + r)];
+//
+//                        img.at(left + x, top + y)
+//                            = static_cast<image<>::intensity_t>(rescale(w, *minmax.first, *minmax.second, 0, 255));
+//                    }
+//                }
+//            }
+//        }
+//        return img;
+//    }
 
     index3d<layer_size_t> in_shape() const override { return in_; }
     index3d<layer_size_t> out_shape() const override { return out_; }
@@ -192,6 +192,8 @@ private:
             for (layer_size_t y = 0; y < out_.height_; ++y)
                 for (layer_size_t x = 0; x < out_.width_; ++x)
                     this->connect_bias(outc, out_.get_index(x, y, outc));
+        
+        this->initGPUlookup();
     }
 
     void connect_kernel(layer_size_t inc, layer_size_t outc, layer_size_t x, layer_size_t y, layer_size_t pad) {

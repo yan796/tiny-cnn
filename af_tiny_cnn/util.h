@@ -59,6 +59,8 @@
 #define CNN_UNREFERENCED_PARAMETER(x) (void)(x)
 
 
+#include <arrayfire.h>
+
 
 namespace tiny_cnn {
 
@@ -67,7 +69,49 @@ typedef float float_t;
 // typedef unsigned short layer_size_t;
 typedef unsigned long layer_size_t;
 typedef size_t label_t;
-    typedef af::array vec_t;
+
+    
+//    //to test if the template is a vector
+//    #include <type_traits>
+//    template<typename>
+//    struct is_std_vector : std::false_type {};
+//    
+//    template<typename T, typename A>
+//    struct is_std_vector<std::vector<T,A>> : std::true_type {};
+//    
+//    
+//    
+//template<typename C, int sizeDim1>
+//    class vec : public C
+//    {
+//    public:
+//        vec<C>(std::size_t s = 0){this->set(af::array(s,sizeDim1));}
+//         vec<C>(const af::array s){this->set(s);}
+//        //vector(std::size_t s, float v) {af::set(af::constant(v,s)); };
+//        virtual std::size_t size() {return  this->elements();};
+//        virtual const std::size_t size() const {return  this->elements();};
+//        const bool empty()const { return size() == 0;}
+//       // virtual float operator[] const (const int &s0){return this(s0);};
+//        //virtual af::array_proxy operator[] const (const af::index &s0){return  this(s0);};
+//        //virtual const T operator() (std::size_t x) const {return operator[](x);};
+//        //define if it is a std::vector
+//       
+//        //template<typename T>
+//      
+//        //public:
+//        //    friend T operator() (std::size_t x);
+//        //const T operator() (std::size_t x) const {return operator[](x);};
+//       // T operator[] (std::size_t x) {return operator()(x);};
+//    };
+//    
+  //  template<typename T>
+  //      std::enable_if< is_std_vector<T>::value > T operator() (std::size_t x) {return operator[](x);};
+    
+//typedef vec<af::array> vec_t;
+//template<int T = 1> using vec_t = vec<af::array,T>;
+typedef af::array vec_t;
+//typedef af::array vec_t;
+//typedef std::vector<float_t> vec_t;
 
 class nn_error : public std::exception {
 public:
@@ -124,16 +168,21 @@ inline bool is_little_endian() {
 
 template<typename T>
 int max_index(const T& vec) {
-    typename T::value_type max_val = std::numeric_limits<typename T::value_type>::lowest();
-    int max_index = -1;
-
-    for (size_t i = 0; i < vec.size(); i++) {
-        if (vec[i] > max_val) {
-            max_index = i;
-            max_val = vec[i];
-        }
-    }
-    return max_index;
+    //typename T::value_type max_val = std::numeric_limits<typename T::value_type>::lowest();
+    //int max_index = -1;
+//    for (size_t i = 0; i < vec.size(); i++) {
+//        if (vec[i] > max_val) {
+//            max_index = i;
+//            max_val = vec[i];
+//        }
+//    }
+    
+    af::array val; af::array idx;
+    af::max	(val,idx,vec);
+    
+    int* idx_h = idx.host<int>();
+    
+    return idx_h[0];
 }
 
 template<typename T, typename U>
@@ -168,29 +217,6 @@ inline void nop()
         parallelize ? parallel_for(begin, end, f) : xparallel_for(begin, end, f);
     }
 #endif // CNN_USE_TBB
-
-#ifdef CNN_USE_ARRAYFIRE
-    //static tbb::task_scheduler_init tbbScheduler(tbb::task_scheduler_init::automatic);//tbb::task_scheduler_init::deferred);
-
-    // typedef tbb::blocked_range<int> blocked_range;
-    // typedef tbb::task_group task_group;
-
-    template<typename Func>
-    void parallel_for(int begin, int end, const Func& f) {
-        //tbb::parallel_for(blocked_range(begin, end, 100), f);
-    }
-    template<typename Func>
-    void xparallel_for(int begin, int end, const Func& f) {
-        f(blocked_range(begin, end, 100));
-    }
-
-    template<typename Func>
-    void for_(bool parallelize, int begin, int end, Func f) {
-        parallelize ? parallel_for(begin, end, f) : xparallel_for(begin, end, f);
-    }
-
-#endif // CNN_USE_TBB
-
 
 #if !defined(CNN_USE_TBB)
     
@@ -285,9 +311,12 @@ inline bool isfinite(float_t x) {
 }
 
 template <typename Container> inline bool has_infinite(const Container& c) {
-    for (auto v : c)
-        if (!isfinite(v)) return true;
-    return false;
+    af::array trues = af::anyTrue(isNaN(c));
+    bool *res = trues.host<bool>();
+    return res[0];
+//    for (auto v : c)
+//        if (!isfinite(v)) return true;
+//    return false;
 }
 
 template <typename Container>
